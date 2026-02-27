@@ -361,7 +361,6 @@
           }
         }
 
-        // 3️⃣ Delete order rows
         await supabaseClient
           .from("orders")
           .delete()
@@ -371,9 +370,17 @@
         fetchProducts();
         fetchOrders();
       }
+      function setTodayDate() {
+        const today = new Date();
+        const formatted = today.toISOString().split("T")[0];
+
+        document.getElementById("orderDate").value = formatted;
+      }
+
       window.onload = () => {
         fetchProducts();
         fetchOrders();
+        setTodayDate();
       };
     </script>
   </body>
