@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Healthlink Orders</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+
+  <body class="bg-slate-100 text-sm pb-10">
+    <div class="bg-green-900 p-4 shadow-lg flex justify-between items-center">
+      <h1 class="text-white font-bold text-lg">Orders</h1>
+      <a
+        href="index.html"
+        class="bg-white text-green-900 font-bold px-4 py-2 rounded-lg"
+      >
+        ← Back to Inventory
+      </a>
+    </div>
+
+    <div class="flex justify-center my-8">
+      <div class="bg-white p-8 rounded-2xl shadow-md w-[80%]">
+        <h2 class="font-bold uppercase mb-6 border-b pb-2">Record New Order</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <select id="orderTable" class="p-3 border rounded-lg bg-slate-50">
+            <option value="singles">Singles</option>
+            <option value="cases">Cases</option>
+          </select>
+
+          <select
+            id="orderProduct"
+            class="p-3 border rounded-lg bg-slate-50"
+          ></select>
+
+          <input
+            type="number"
+            id="orderQty"
+            placeholder="Quantity"
+            class="p-3 border rounded-lg bg-slate-50"
+          />
+
+          <input
+            type="text"
+            id="orderCustomer"
+            placeholder="Customer Name"
+            class="p-3 border rounded-lg bg-slate-50"
+          />
+
+          <input
+            type="date"
+            id="orderDate"
+            class="p-3 border rounded-lg bg-slate-50"
+          />
+        </div>
+
+        <div id="currentOrderItems" class="mt-6 space-y-2"></div>
+
+        <div class="flex gap-4 mt-6">
+          <button
+            onclick="addItemToOrder()"
+            class="w-1/2 bg-blue-600 text-white p-4 rounded-xl font-bold"
+          >
+            ADD ITEM
+          </button>
+
+          <button
+            onclick="completeOrder()"
+            class="w-1/2 bg-green-700 text-white p-4 rounded-xl font-bold"
+          >
+            COMPLETE ORDER
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex justify-center">
+      <div class="w-[80%] flex gap-4 mb-4">
+        <input type="date" id="filterDate" class="p-2 border rounded-lg" />
+
+        <button
+          onclick="applyDateFilter()"
+          class="bg-blue-600 text-white px-4 py-2 rounded-lg"
+        >
+          Filter
+        </button>
+
+        <button
+          onclick="fetchOrders()"
+          class="bg-gray-300 px-4 py-2 rounded-lg"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <div class="flex justify-center">
+      <div class="bg-white p-6 rounded-2xl shadow-md w-[80%]">
+        <h2 class="font-bold mb-4">Recent Orders</h2>
+        <div id="ordersList" class="space-y-6"></div>
+      </div>
+    </div>
+
+    <script>
+      const SUPABASE_URL = "https://wgtmrqtikbbkdemosbaq.supabase.co";
+      const SUPABASE_KEY =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndndG1ycXRpa2Jia2RlbW9zYmFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjA1MzUsImV4cCI6MjA4NzM5NjUzNX0.O8jE600mTH7jRRYNmbsanYQsqP9mLe_zk8BxgAJo44M";
+      const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      let dataStore = { singles: [], cases: [] };
+      let currentOrder = [];
+
+      async function fetchProducts() {
+        const { data: s } = await supabaseClient.from("singles").select("*");
+        const { data: c } = await supabaseClient.from("cases").select("*");
+
+        dataStore.singles = s || [];
+        dataStore.cases = c || [];
+
+        populateProducts();
+      }
+
+      function populateProducts() {
+        const table = document.getElementById("orderTable").value;
+        const select = document.getElementById("orderProduct");
+
+        const list = table === "singles" ? dataStore.singles : dataStore.cases;
+
+        select.innerHTML = list
+          .map(
+            (item) => `
+        <option value="${item.id}">
+          ${item.name} (Stock: ${item.stock_count})
+        </option>
+      `
+          )
+          .join("");
+      }
+
+      document
+        .getElementById("orderTable")
+        .addEventListener("change", populateProducts);
+
+      function addItemToOrder() {
+        const table = document.getElementById("orderTable").value;
+        const productId = parseInt(
+          document.getElementById("orderProduct").value
+        );
+        const qty = parseInt(document.getElementById("orderQty").value);
+
+        if (!qty || qty <= 0) {
+          alert("Enter valid quantity.");
+          return;
+        }
+
+        const list = table === "singles" ? dataStore.singles : dataStore.cases;
+
+        const product = list.find((i) => i.id === productId);
+
+        if (!product || product.stock_count < qty) {
+          alert("Not enough stock.");
+          return;
+        }
+
+        currentOrder.push({
+          product_id: productId,
+          product_table: table,
+          quantity: qty,
+          product_name: product.name,
+        });
+
+        document.getElementById("orderQty").value = "";
+
+        renderCurrentOrder();
+      }
+
+      function renderCurrentOrder() {
+        const container = document.getElementById("currentOrderItems");
+        container.innerHTML = "";
+
+        currentOrder.forEach((item, index) => {
+          container.innerHTML += `
+        <div class="flex justify-between bg-gray-100 p-3 rounded-lg">
+          <span>${item.product_name}</span>
+          <span>x${item.quantity}</span>
+        </div>
+      `;
+        });
+      }
+
+      async function completeOrder() {
+        const customer = document.getElementById("orderCustomer").value.trim();
+        const date = document.getElementById("orderDate").value;
+
+        if (!customer || !date) {
+          alert("Customer and date required.");
+          return;
+        }
+
+        if (currentOrder.length === 0) {
+          alert("Add at least one item.");
+          return;
+        }
+
+        for (const item of currentOrder) {
+          await supabaseClient.from("orders").insert([
+            {
+              product_id: item.product_id,
+              product_table: item.product_table,
+              quantity: item.quantity,
+              customer_name: customer,
+              order_date: date,
+            },
+          ]);
+
+          const product = dataStore[item.product_table].find(
+            (p) => p.id === item.product_id
+          );
+
+          await supabaseClient
+            .from(item.product_table)
+            .update({
+              stock_count: product.stock_count - item.quantity,
+            })
+            .eq("id", item.product_id);
+        }
+
+        currentOrder = [];
+        renderCurrentOrder();
+
+        document.getElementById("orderCustomer").value = "";
+        document.getElementById("orderDate").value = "";
+
+        fetchProducts();
+        fetchOrders();
+      }
+
+      function applyDateFilter() {
+        const date = document.getElementById("filterDate").value;
+        if (!date) return;
+        fetchOrders(date);
+      }
+
+      async function fetchOrders(filterDate = null) {
+        let query = supabaseClient
+          .from("orders")
+          .select("*")
+          .order("order_date", { ascending: false });
+
+        if (filterDate) {
+          query = query.eq("order_date", filterDate);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error(error.message);
+          return;
+        }
+
+        const container = document.getElementById("ordersList");
+        container.innerHTML = "";
+
+        if (!data || data.length === 0) {
+          container.innerHTML = "<p class='text-gray-500'>No orders found.</p>";
+          return;
+        }
+
+        const grouped = {};
+
+        for (const order of data) {
+          const key = `${order.customer_name}-${order.order_date}`;
+
+          if (!grouped[key]) {
+            grouped[key] = [];
+          }
+
+          grouped[key].push(order);
+        }
+
+        for (const key in grouped) {
+          const orders = grouped[key];
+          const first = orders[0];
+
+          let itemsHTML = "";
+
+          for (const order of orders) {
+            const { data: product } = await supabaseClient
+              .from(order.product_table)
+              .select("name")
+              .eq("id", order.product_id)
+              .single();
+
+            itemsHTML += `
+          <li class="flex justify-between border-b py-1">
+            <span>${product ? product.name : "Deleted Product"}</span>
+            <span>x${order.quantity}</span>
+          </li>
+        `;
+          }
+
+          container.innerHTML += `
+  <div class="bg-white p-6 rounded-2xl shadow-md border">
+    <div class="flex justify-between items-start mb-3">
+      <div>
+        <p class="font-bold text-lg">${first.customer_name}</p>
+        <p class="text-sm text-gray-500">${first.order_date}</p>
+      </div>
+
+      <button
+        onclick="deleteOrder('${first.customer_name}', '${first.order_date}')"
+        class="text-red-600 text-sm font-bold hover:underline"
+      >
+        Delete
+      </button>
+    </div>
+
+    <ul class="space-y-1">
+      ${itemsHTML}
+    </ul>
+  </div>
+`;
+        }
+      }
+
+      async function deleteOrder(customerName, orderDate) {
+        const confirmDelete = confirm(
+          "Delete this entire order and restore stock?"
+        );
+
+        if (!confirmDelete) return;
+
+        // 1️⃣ Get all rows belonging to that grouped order
+        const { data: orders, error } = await supabaseClient
+          .from("orders")
+          .select("*")
+          .eq("customer_name", customerName)
+          .eq("order_date", orderDate);
+
+        if (error || !orders) {
+          alert("Could not fetch order.");
+          return;
+        }
+
+        // 2️⃣ Restore stock for each item
+        for (const order of orders) {
+          const { data: product } = await supabaseClient
+            .from(order.product_table)
+            .select("stock_count")
+            .eq("id", order.product_id)
+            .single();
+
+          if (product) {
+            await supabaseClient
+              .from(order.product_table)
+              .update({
+                stock_count: product.stock_count + order.quantity,
+              })
+              .eq("id", order.product_id);
+          }
+        }
+
+        // 3️⃣ Delete order rows
+        await supabaseClient
+          .from("orders")
+          .delete()
+          .eq("customer_name", customerName)
+          .eq("order_date", orderDate);
+
+        fetchProducts();
+        fetchOrders();
+      }
+      window.onload = () => {
+        fetchProducts();
+        fetchOrders();
+      };
+    </script>
+  </body>
+</html>
